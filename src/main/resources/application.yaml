@@ -1,3 +1,17 @@
 spring:
-  application:
-    name: mongodb
+  # Spring Boot 4 moved the connection properties out from under spring.data.mongodb
+  # (spring.data.mongodb.uri is deprecated at error level since 4.0). Getting this wrong is
+  # quiet rather than loud: the driver falls back to mongodb://localhost/test and every query
+  # returns nothing - which is what LabStartupCheck is there to catch.
+  mongodb:
+    # directConnection=true keeps the driver talking to the container directly instead of
+    # chasing the replica-set member's internal hostname, which does not resolve from the host.
+    uri: ${MONGO_URI:mongodb://root:example@localhost:27017/sample_mflix?authSource=admin&directConnection=true}
+  data:
+    mongodb:
+      # Indexes are declared explicitly in configuration, not derived from @Indexed at startup.
+      auto-index-creation: false
+
+logging:
+  level:
+    org.springframework.data.mongodb.core.MongoTemplate: INFO

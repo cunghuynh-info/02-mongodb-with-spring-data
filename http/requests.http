@@ -1,0 +1,211 @@
+### MongoDB + Spring Data lab - every endpoint, in phase order.
+### IntelliJ HTTP client (or the REST Client extension in VS Code).
+### Start the lab first: docker compose up -d
+
+@host = http://localhost:8080/api
+
+### Set this from the response of "2.2 search" below, then the Phase 1 requests will work.
+@movieId = 573a1396f29313caabce4a9b
+
+
+########## Phase 1 - embedding and referencing ##########
+
+### 1.1 The embedded document: one read, no joins
+GET {{host}}/movies/{{movieId}}
+
+### 1.2 Referenced children, paged
+GET {{host}}/movies/{{movieId}}/comments?page=0&size=5
+
+### 1.2 Two explicit queries
+GET {{host}}/movies/{{movieId}}/comments/manual?limit=5
+
+### 1.3 Resolved through @DocumentReference (lazy)
+GET {{host}}/movies/{{movieId}}/comments/via-reference?limit=5
+
+### 1.3 The eager inverse - one extra query per comment
+GET {{host}}/movies/{{movieId}}/comments/via-eager-reference?limit=5
+
+### 1.4 One round trip, sorted and limited server-side
+GET {{host}}/movies/{{movieId}}/comments/via-lookup?limit=5
+
+### 1.5 Insert + maintain the bounded embed. Post 7 times and re-read 1.1:
+### recent_comments stays at 5, num_mflix_comments climbs by 7.
+POST {{host}}/movies/{{movieId}}/comments
+Content-Type: application/json
+
+{ "name": "Ada Lovelace", "email": "ada@example.com", "text": "Holds up." }
+
+
+########## Phase 2 - Criteria, MongoTemplate, aggregation ##########
+
+### 2.2 Dynamic filter. Copy an id from the response into @movieId above.
+GET {{host}}/movies?genres=Crime&yearFrom=1970&yearTo=1980&minRating=8&size=5&sort=year,asc
+
+### 2.2 Cast filter (regex over an array)
+GET {{host}}/movies?castMember=Al Pacino&size=5
+
+### 2.3 Interface projection - title, year, genres, imdb.rating only
+GET {{host}}/movies/summaries?genres=Sci-Fi&minRating=8&size=5
+
+### 2.4 $inc through findAndModify
+POST {{host}}/movies/{{movieId}}/votes?delta=1
+
+### 2.4 $addToSet - run it twice, nothing changes the second time
+POST {{host}}/movies/{{movieId}}/genres?genre=Cyberpunk
+
+### 2.4 $pull
+DELETE {{host}}/movies/{{movieId}}/genres?genre=Cyberpunk
+
+### 2.5 unwind + group
+GET {{host}}/stats/genres?limit=10
+
+### 2.6 $facet: genre counts, decade buckets and a page, in one round trip
+GET {{host}}/stats/browse?genres=Drama&yearFrom=1990&pageSize=5
+
+### 2.7 $lookup with a counting sub-pipeline
+GET {{host}}/stats/most-commented?fromYear=1990&minComments=150&limit=5
+
+### 2.8 Second database: revenue per store per month
+GET {{host}}/stats/sales-revenue?limit=10
+
+### 2.8 The same, with $dateTrunc and $densify filling the empty months
+GET {{host}}/stats/sales-revenue-dense?limit=10
+
+### 2.9 explain, trimmed to the numbers that matter (?raw=true for everything)
+GET {{host}}/movies/explain?genres=Crime&yearFrom=1970&yearTo=1980
+
+
+########## Phase 3 - indexes ##########
+
+### 3.2 What exists, with on-disk sizes
+GET {{host}}/indexes/movies
+
+### 3.4 Covered query - docsExamined comes back 0
+GET {{host}}/indexes/covered-query?genre=Crime
+
+### 3.6 Partial index: implies the filter vs does not
+GET {{host}}/indexes/partial-index?threshold=9.0
+
+
+########## Phase 4 - paging ##########
+
+### 4.1 Offset paging
+GET {{host}}/movies?yearFrom=1900&page=0&size=20&sort=year,desc
+
+### 4.2 Offset page 0 vs page 500 vs keyset at the same depth
+GET {{host}}/movies/paging-benchmark?yearFrom=1900&size=20&deepPage=500
+
+### 4.3 Slice - hasNext, no count query
+GET {{host}}/movies/slice?yearFrom=1900&page=0&size=20
+
+### 4.4 Spring Data Window scrolling. Pass nextCursor back as ?cursor=
+GET {{host}}/movies/scroll?yearFrom=1900&size=20
+
+### 4.5 / 4.6 Hand-written keyset behind an opaque cursor
+GET {{host}}/movies/keyset?yearFrom=1900&size=20
+
+### 4.7 The keyset query examines exactly one page of index keys
+GET {{host}}/movies/keyset/explain?yearFrom=1900&size=20
+
+
+########## Phase 5 - bulk write ##########
+
+### 5.3 One-by-one vs batched (takes about a minute at 20k)
+GET {{host}}/analytics/bulk/benchmark?total=20000&batchSize=1000
+
+### 5.2 Ordered stops at the duplicate, unordered carries on
+GET {{host}}/analytics/bulk/duplicate-key
+
+### 5.5 Idempotent upsert - run twice, createdAt does not move
+POST {{host}}/analytics/bulk/upsert?openingBalance=1000.00
+Content-Type: application/json
+
+[900001, 900002]
+
+### 5.1 Mixed batch, exact result counts
+POST {{host}}/analytics/bulk/raise-limits?delta=500
+Content-Type: application/json
+
+[900001, 900002]
+
+### 5.6 Streaming read, batched write
+GET {{host}}/analytics/bulk/stream-to-bulk?batchSize=1000
+
+
+########## Phase 6 - transactions ##########
+### Run the Phase 5 upsert above first to create accounts 900001 / 900002.
+
+### 6.2 A committed transfer
+POST {{host}}/analytics/transfer
+Content-Type: application/json
+
+{ "from": 900001, "to": 900002, "amount": 250.00, "idempotencyKey": "demo-1" }
+
+### 6.2 Fails after both writes - expect 500, then check the balances are untouched
+POST {{host}}/analytics/transfer/rollback-demo
+Content-Type: application/json
+
+{ "from": 900001, "to": 900002, "amount": 100.00 }
+
+### 6.3 Overdraft - expect 500, nothing written
+POST {{host}}/analytics/transfer
+Content-Type: application/json
+
+{ "from": 900001, "to": 900002, "amount": 99999.00, "idempotencyKey": "nope" }
+
+### Balances and the invariant total
+GET {{host}}/analytics/balances?from=900001&to=900002
+
+### The audit trail - one row per committed transfer
+GET {{host}}/analytics/transfers
+
+
+########## Phase 7 - change data capture ##########
+
+### 7.4 Before-images are off by default
+POST {{host}}/cdc/enable-pre-images
+
+### 7.1 Start watching. resume=true picks up from the stored token.
+POST {{host}}/cdc/start?resume=false
+
+### Now run a transfer above, then:
+GET {{host}}/cdc/events
+
+### 7.5 Running, event count, whether a token is stored
+GET {{host}}/cdc/status
+
+### 7.5 Drop the token, to show a restart without one loses the gap
+DELETE {{host}}/cdc/resume-token
+
+### Stop
+POST {{host}}/cdc/stop
+
+
+########## Phase 8 - Atlas Search ##########
+
+### Index status - "queryable" must be true before anything below returns hits
+GET {{host}}/search/index
+
+### 8.1 / 8.2 Text search with score and highlights
+GET {{host}}/search/movies?q=gangster&limit=5
+
+### 8.3 Autocomplete from a prefix
+GET {{host}}/search/autocomplete?q=godf&limit=5
+
+### 8.4 compound: must / should(boost) / filter / mustNot
+GET {{host}}/search/compound?q=gangster&genre=Crime&minYear=1990&limit=5
+
+### 8.5 $searchMeta facets - counts without documents
+GET {{host}}/search/facets?q=gangster
+
+### 8.6 searchAfter paging. Pass nextToken back as ?after=
+GET {{host}}/search/page?q=gangster&size=3
+
+### 8.7 Fuzzy. maxEdits=1 finds nothing; 2 does - see docs/notes/08-atlas-search.md
+GET {{host}}/search/fuzzy?q=Godfathar&maxEdits=1&limit=5
+
+###
+GET {{host}}/search/fuzzy?q=Godfathar&maxEdits=2&limit=5
+
+### Rebuild the index from SearchIndexService (blocks until queryable)
+POST {{host}}/search/index

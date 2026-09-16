@@ -1,0 +1,75 @@
+# MongoDB lab stack for the Spring Data practice project.
+#
+#   docker compose up -d                 # mongodb + one-shot sample-data seed
+#   docker compose --profile tools up -d # + mongo-express UI on http://localhost:8081
+#   docker compose down                  # stop (keeps data)
+#   docker compose down -v               # stop and wipe data + the downloaded archive
+#
+# The image is MongoDB's local Atlas build: a single-node replica set (so change
+# streams and multi-document transactions work) bundled with mongot, which is what
+# makes $search / $vectorSearch available without an Atlas cluster.
+name: mongo-spring-lab
+
+services:
+  mongodb:
+    image: mongodb/mongodb-atlas-local:8.0
+    container_name: mongo-lab
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    environment:
+      MONGODB_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-root}
+      MONGODB_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-example}
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+    healthcheck:
+      # `ping` is on mongod's pre-auth allowlist, so no credentials needed here.
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 40s
+
+  # One-shot: downloads the Atlas sample dataset, restores the databases listed in
+  # SAMPLE_DATABASES, then creates the Atlas Search indexes the lab uses. Re-running
+  # `docker compose up` is cheap: the archive is cached in a volume and the restore
+  # is skipped once the seed marker document exists.
+  mongo-seed:
+    build:
+      context: ./docker/seed
+    container_name: mongo-lab-seed
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USERNAME: ${MONGO_USERNAME:-root}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:-example}
+      SAMPLE_DATABASES: ${SAMPLE_DATABASES:-sample_mflix,sample_airbnb,sample_analytics,sample_training,sample_supplies}
+      SAMPLE_ARCHIVE_URL: ${SAMPLE_ARCHIVE_URL:-https://atlas-education.s3.amazonaws.com/sampledata.archive}
+      # set to "true" to re-restore even if the seed marker is already present
+      SEED_FORCE: ${SEED_FORCE:-false}
+    volumes:
+      - sample-archive:/seed-cache
+    restart: "no"
+
+  mongo-express:
+    image: mongo-express:1.0.2
+    container_name: mongo-lab-express
+    profiles: ["tools"]
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "${MONGO_EXPRESS_PORT:-8081}:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USERNAME:-root}:${MONGO_PASSWORD:-example}@mongodb:27017/?authSource=admin&directConnection=true
+      ME_CONFIG_BASICAUTH: "false"
+    restart: unless-stopped
+
+volumes:
+  mongodb-data:
+  mongodb-config:
+  sample-archive:
