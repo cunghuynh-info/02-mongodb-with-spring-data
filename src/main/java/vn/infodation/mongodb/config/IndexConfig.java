@@ -19,6 +19,8 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.stereotype.Component;
 
 import lombok.extern.slf4j.Slf4j;
+import vn.infodation.mongodb.security.domain.RefreshToken;
+import vn.infodation.mongodb.security.service.AuthenticationEventListener;
 
 /**
  * Phase 3.2 - every index in one place, created at startup and idempotent.
@@ -49,6 +51,12 @@ public class IndexConfig implements ApplicationRunner {
     /** Phase 3.8 */
     public static final String SESSIONS_TTL = "sessions_ttl";
     public static final String SESSIONS_WILDCARD = "sessions_attributes_wildcard";
+    /** Security 1.3 - what makes the registration race decidable. */
+    public static final String USERS_EMAIL = "users_email_unique";
+    /** Security 5.2 - expiry as a database concern. */
+    public static final String REFRESH_TOKENS_TTL = "refresh_tokens_ttl";
+    /** Security 7.3 - an auth log that cleans up after itself. */
+    public static final String AUTH_EVENTS_TTL = "auth_events_ttl";
 
     /** Scratch collections for the index shapes that have no home in the sample data. */
     public static final String SUBSCRIBERS = "lab_subscribers";
@@ -122,8 +130,42 @@ public class IndexConfig implements ApplicationRunner {
         // data and cannot be enumerated up front.
         create(mflix.indexOps(SESSIONS), new WildcardIndex("attributes").named(SESSIONS_WILDCARD));
 
+        // Security 1.3 - the only thing that can actually decide a registration race, which is
+        // why AuthController inserts and catches rather than checking first.
+        //
+        // Tolerated rather than fatal: this runs against sample_mflix.users, a collection that
+        // arrived with a few hundred rows nobody here wrote. If two of them share an address the
+        // build of this index fails, and refusing to start the whole application over a data
+        // problem in someone's seeded lab helps no one. The log line says what broke.
+        createTolerantly(mflix.indexOps("users"), new Index().on("email", Sort.Direction.ASC)
+                .named(USERS_EMAIL)
+                .unique(), "duplicate emails in sample_mflix.users");
+
+        // Security 5.2 - expireAfterSeconds: 0 means "expire at the time in this field" rather
+        // than "this long after it". The reaper still only runs about once a minute, so this is
+        // cleanup and not enforcement: TokenService checks expiresAt itself.
+        create(mflix.indexOps(RefreshToken.COLLECTION),
+                new Index().on("expiresAt", Sort.Direction.ASC)
+                        .named(REFRESH_TOKENS_TTL)
+                        .expire(Duration.ZERO));
+
+        create(mflix.indexOps(AuthenticationEventListener.COLLECTION),
+                new Index().on("createdAt", Sort.Direction.ASC)
+                        .named(AUTH_EVENTS_TTL)
+                        .expire(Duration.ofDays(30)));
+
         log.info("indexes ready: movies={}, comments={}",
                 names(mflix.indexOps("movies")), names(mflix.indexOps("comments")));
+    }
+
+    private void createTolerantly(IndexOperations ops,
+                                  org.springframework.data.mongodb.core.index.IndexDefinition index,
+                                  String likelyCause) {
+        try {
+            create(ops, index);
+        } catch (RuntimeException ex) {
+            log.error("could not create an index - likely cause: {}. {}", likelyCause, ex.getMessage());
+        }
     }
 
     private void create(IndexOperations ops, org.springframework.data.mongodb.core.index.IndexDefinition index) {

@@ -3,6 +3,7 @@ package vn.infodation.mongodb.mflix.domain;
 import java.time.Instant;
 
 import org.bson.types.ObjectId;
+import org.springframework.data.annotation.CreatedBy;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
@@ -38,4 +39,14 @@ public class Comment {
 
     private String text;
     private Instant date;
+
+    /**
+     * Phase 7.2 - written by Spring Data auditing from the {@code SecurityContext}, not by the
+     * service. Redundant with {@code email} today and deliberately so: {@code email} is the
+     * author as the domain understands it, {@code createdBy} is whoever was authenticated when
+     * the row appeared. They agree right up until an admin writes a comment on someone's behalf,
+     * and that is the case an audit field exists for.
+     */
+    @CreatedBy
+    private String createdBy;
 }

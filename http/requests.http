@@ -7,6 +7,47 @@
 ### Set this from the response of "2.2 search" below, then the Phase 1 requests will work.
 @movieId = 573a1396f29313caabce4a9b
 
+########## Phase 10 - log in first ##########
+### Everything below this block that needs a token reads {{adminToken}} or {{userToken}},
+### stashed by the two requests here. Run both once; the access token lasts 15 minutes
+### (lab.security.access-token-ttl), after which run them again.
+###
+### The credentials are the seeded lab accounts - see the Security section of README.md.
+### Nothing in Phases 1-4 or 8 needs a token: the catalogue, the stats and search are public.
+
+### 10.1 The admin, for the index, analytics, CDC and explain endpoints
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "admin@lab.local", "password": "lab-password" }
+
+> {%
+    client.global.set("adminToken", response.body.accessToken);
+    client.global.set("adminRefreshToken", response.body.refreshToken);
+%}
+
+### 10.1 An ordinary user, for writing and deleting comments
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "user@lab.local", "password": "lab-password" }
+
+> {%
+    client.global.set("userToken", response.body.accessToken);
+    client.global.set("userRefreshToken", response.body.refreshToken);
+%}
+
+### 10.1 An analyst - can read balances, cannot move money
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "analyst@lab.local", "password": "lab-password" }
+
+> {%
+    client.global.set("analystToken", response.body.accessToken);
+%}
+
+
 
 ########## Phase 1 - embedding and referencing ##########
 
@@ -30,10 +71,12 @@ GET {{host}}/movies/{{movieId}}/comments/via-lookup?limit=5
 
 ### 1.5 Insert + maintain the bounded embed. Post 7 times and re-read 1.1:
 ### recent_comments stays at 5, num_mflix_comments climbs by 7.
+### The body used to carry name and email; Phase 10.4 takes the author from the token instead.
 POST {{host}}/movies/{{movieId}}/comments
+Authorization: Bearer {{userToken}}
 Content-Type: application/json
 
-{ "name": "Ada Lovelace", "email": "ada@example.com", "text": "Holds up." }
+{ "text": "Holds up." }
 
 
 ########## Phase 2 - Criteria, MongoTemplate, aggregation ##########
@@ -49,12 +92,15 @@ GET {{host}}/movies/summaries?genres=Sci-Fi&minRating=8&size=5
 
 ### 2.4 $inc through findAndModify
 POST {{host}}/movies/{{movieId}}/votes?delta=1
+Authorization: Bearer {{adminToken}}
 
 ### 2.4 $addToSet - run it twice, nothing changes the second time
 POST {{host}}/movies/{{movieId}}/genres?genre=Cyberpunk
+Authorization: Bearer {{adminToken}}
 
 ### 2.4 $pull
 DELETE {{host}}/movies/{{movieId}}/genres?genre=Cyberpunk
+Authorization: Bearer {{adminToken}}
 
 ### 2.5 unwind + group
 GET {{host}}/stats/genres?limit=10
@@ -73,18 +119,22 @@ GET {{host}}/stats/sales-revenue-dense?limit=10
 
 ### 2.9 explain, trimmed to the numbers that matter (?raw=true for everything)
 GET {{host}}/movies/explain?genres=Crime&yearFrom=1970&yearTo=1980
+Authorization: Bearer {{adminToken}}
 
 
 ########## Phase 3 - indexes ##########
 
 ### 3.2 What exists, with on-disk sizes
 GET {{host}}/indexes/movies
+Authorization: Bearer {{adminToken}}
 
 ### 3.4 Covered query - docsExamined comes back 0
 GET {{host}}/indexes/covered-query?genre=Crime
+Authorization: Bearer {{adminToken}}
 
 ### 3.6 Partial index: implies the filter vs does not
 GET {{host}}/indexes/partial-index?threshold=9.0
+Authorization: Bearer {{adminToken}}
 
 
 ########## Phase 4 - paging ##########
@@ -94,6 +144,7 @@ GET {{host}}/movies?yearFrom=1900&page=0&size=20&sort=year,desc
 
 ### 4.2 Offset page 0 vs page 500 vs keyset at the same depth
 GET {{host}}/movies/paging-benchmark?yearFrom=1900&size=20&deepPage=500
+Authorization: Bearer {{adminToken}}
 
 ### 4.3 Slice - hasNext, no count query
 GET {{host}}/movies/slice?yearFrom=1900&page=0&size=20
@@ -106,30 +157,36 @@ GET {{host}}/movies/keyset?yearFrom=1900&size=20
 
 ### 4.7 The keyset query examines exactly one page of index keys
 GET {{host}}/movies/keyset/explain?yearFrom=1900&size=20
+Authorization: Bearer {{adminToken}}
 
 
 ########## Phase 5 - bulk write ##########
 
 ### 5.3 One-by-one vs batched (takes about a minute at 20k)
 GET {{host}}/analytics/bulk/benchmark?total=20000&batchSize=1000
+Authorization: Bearer {{adminToken}}
 
 ### 5.2 Ordered stops at the duplicate, unordered carries on
 GET {{host}}/analytics/bulk/duplicate-key
+Authorization: Bearer {{adminToken}}
 
 ### 5.5 Idempotent upsert - run twice, createdAt does not move
 POST {{host}}/analytics/bulk/upsert?openingBalance=1000.00
+Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
 [900001, 900002]
 
 ### 5.1 Mixed batch, exact result counts
 POST {{host}}/analytics/bulk/raise-limits?delta=500
+Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
 [900001, 900002]
 
 ### 5.6 Streaming read, batched write
 GET {{host}}/analytics/bulk/stream-to-bulk?batchSize=1000
+Authorization: Bearer {{adminToken}}
 
 
 ########## Phase 6 - transactions ##########
@@ -137,54 +194,66 @@ GET {{host}}/analytics/bulk/stream-to-bulk?batchSize=1000
 
 ### 6.2 A committed transfer
 POST {{host}}/analytics/transfer
+Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
 { "from": 900001, "to": 900002, "amount": 250.00, "idempotencyKey": "demo-1" }
 
 ### 6.2 Fails after both writes - expect 500, then check the balances are untouched
 POST {{host}}/analytics/transfer/rollback-demo
+Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
 { "from": 900001, "to": 900002, "amount": 100.00 }
 
 ### 6.3 Overdraft - expect 500, nothing written
 POST {{host}}/analytics/transfer
+Authorization: Bearer {{adminToken}}
 Content-Type: application/json
 
 { "from": 900001, "to": 900002, "amount": 99999.00, "idempotencyKey": "nope" }
 
 ### Balances and the invariant total
 GET {{host}}/analytics/balances?from=900001&to=900002
+Authorization: Bearer {{adminToken}}
 
 ### The audit trail - one row per committed transfer
 GET {{host}}/analytics/transfers
+Authorization: Bearer {{adminToken}}
 
 
 ########## Phase 7 - change data capture ##########
 
 ### 7.4 Before-images are off by default
 POST {{host}}/cdc/enable-pre-images
+Authorization: Bearer {{adminToken}}
 
 ### 7.1 Start watching. resume=true picks up from the stored token.
 POST {{host}}/cdc/start?resume=false
+Authorization: Bearer {{adminToken}}
 
 ### Now run a transfer above, then:
 GET {{host}}/cdc/events
+Authorization: Bearer {{adminToken}}
 
 ### 7.5 Running, event count, whether a token is stored
 GET {{host}}/cdc/status
+Authorization: Bearer {{adminToken}}
 
 ### 7.5 Drop the token, to show a restart without one loses the gap
 DELETE {{host}}/cdc/resume-token
+Authorization: Bearer {{adminToken}}
 
 ### Stop
 POST {{host}}/cdc/stop
+Authorization: Bearer {{adminToken}}
 
 
 ########## Phase 8 - Atlas Search ##########
 
 ### Index status - "queryable" must be true before anything below returns hits
 GET {{host}}/search/index
+Authorization: Bearer {{adminToken}}
 
 ### 8.1 / 8.2 Text search with score and highlights
 GET {{host}}/search/movies?q=gangster&limit=5
@@ -209,3 +278,148 @@ GET {{host}}/search/fuzzy?q=Godfathar&maxEdits=2&limit=5
 
 ### Rebuild the index from SearchIndexService (blocks until queryable)
 POST {{host}}/search/index
+Authorization: Bearer {{adminToken}}
+
+
+########## Phase 10 - security ##########
+
+### 10.2 Register. 201 with a token pair; run it twice for the 409 from users_email_unique.
+POST {{host}}/auth/register
+Content-Type: application/json
+
+{ "name": "Ada Lovelace", "email": "ada.lab@example.com", "password": "not-a-real-password" }
+
+> {%
+    client.global.set("adaToken", response.body.accessToken);
+    client.global.set("adaRefreshToken", response.body.refreshToken);
+%}
+
+### 10.2 Who the server thinks you are
+GET {{host}}/auth/me
+Authorization: Bearer {{userToken}}
+
+### 10.2 No token at all - 401 in the same JSON shape as every other error
+GET {{host}}/auth/me
+
+### 10.2 A token that is not a token - also 401, from the decoder rather than the rules
+GET {{host}}/auth/me
+Authorization: Bearer not.a.jwt
+
+### 10.2 Wrong password. Identical body to an email that does not exist: no user enumeration.
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "user@lab.local", "password": "wrong" }
+
+###
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "nobody@lab.local", "password": "lab-password" }
+
+
+########## 10.3 Roles ##########
+
+### An ordinary user against an admin route - 403
+GET {{host}}/indexes/movies
+Authorization: Bearer {{userToken}}
+
+### Anonymous against the same route - 401, because there is nobody to refuse yet
+GET {{host}}/indexes/movies
+
+### The ordering trap: this one is admin-only and sits under the public GET /movies/**
+GET {{host}}/movies/explain?genres=Crime
+Authorization: Bearer {{userToken}}
+
+### ...while the movie next to it stays public
+GET {{host}}/movies/{{movieId}}
+
+### The analyst reads balances
+GET {{host}}/analytics/balances?from=900001&to=900002
+Authorization: Bearer {{analystToken}}
+
+### ...and cannot move money - 403
+POST {{host}}/analytics/transfer
+Authorization: Bearer {{analystToken}}
+Content-Type: application/json
+
+{ "from": 900001, "to": 900002, "amount": 10.00 }
+
+
+########## 10.4 Ownership ##########
+
+### Post a comment as Ada. The author is taken from the token - there is no email field
+### on this request any more, and sending one changes nothing.
+POST {{host}}/movies/{{movieId}}/comments
+Authorization: Bearer {{adaToken}}
+Content-Type: application/json
+
+{ "text": "Posted with a bearer token." }
+
+> {%
+    client.global.set("commentId", response.body.id);
+%}
+
+### 10.4 My own comments, filtered by Mongo through ?#{authentication.name}
+GET {{host}}/comments/mine?size=20
+Authorization: Bearer {{adaToken}}
+
+### 10.4 The same intent applied after paging. Ask for a page of 20 and count what arrives:
+### @PostFilter removes rows from a page the server already considered full.
+GET {{host}}/comments/mine/post-filtered?size=20
+Authorization: Bearer {{adaToken}}
+
+### 10.4 Someone else's token against Ada's comment. 403 for the two check-first strategies,
+### 404 for the one that puts ownership in the query - try all three.
+DELETE {{host}}/movies/{{movieId}}/comments/{{commentId}}?strategy=post-authorize
+Authorization: Bearer {{userToken}}
+
+###
+DELETE {{host}}/movies/{{movieId}}/comments/{{commentId}}?strategy=bean
+Authorization: Bearer {{userToken}}
+
+###
+DELETE {{host}}/movies/{{movieId}}/comments/{{commentId}}?strategy=query
+Authorization: Bearer {{userToken}}
+
+### 10.4 The existence leak: post-authorize answers 404 for an id that does not exist and
+### 403 for one that does, so the status code reports which ids are real. The other two
+### strategies answer the same thing to both.
+DELETE {{host}}/movies/{{movieId}}/comments/0000000000000000000000ff?strategy=post-authorize
+Authorization: Bearer {{userToken}}
+
+###
+DELETE {{host}}/movies/{{movieId}}/comments/0000000000000000000000ff?strategy=bean
+Authorization: Bearer {{userToken}}
+
+### 10.4 Ada deletes her own. One round trip, ownership inside the predicate.
+DELETE {{host}}/movies/{{movieId}}/comments/{{commentId}}?strategy=query
+Authorization: Bearer {{adaToken}}
+
+
+########## 10.5 Refresh tokens ##########
+
+### Rotate. The presented token is dead the moment this returns.
+POST {{host}}/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{adaRefreshToken}}" }
+
+> {%
+    client.global.set("adaRefreshToken", response.body.refreshToken);
+%}
+
+### Replay the one you just used - 401, and it revokes every token for that user, because a
+### token presented after rotation means a copy of it exists somewhere.
+POST {{host}}/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{adaRefreshToken}}" }
+
+### Log out: revokes the refresh token. The access token keeps working until it expires -
+### that is the price of not looking it up on every request.
+POST {{host}}/auth/logout
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{ "refreshToken": "{{userRefreshToken}}" }

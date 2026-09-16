@@ -275,6 +275,15 @@ Six things the plan got wrong or did not anticipate, all now recorded in `docs/n
 6. Atlas Search facets need `stringFacet`/`numberFacet` mappings, and fuzzy distance is
    measured against the stemmed term (8).
 
+## Phase 10 - Spring Security
+
+Added after the fact, and planned in its own file:
+[plans/IMPLEMENT-SPRING-SECURITY.md](plans/IMPLEMENT-SPRING-SECURITY.md).
+
+Same shape as the phases above - identity out of `sample_mflix.users`, refresh tokens expiring
+through a TTL index, ownership as a `Criteria` rather than a check - with the findings in
+[notes/09-security.md](notes/09-security.md).
+
 ## Order and effort
 
 Phases 1 to 4 are the backbone and are worth doing in order. Phases 5, 6, 7 and 8 are

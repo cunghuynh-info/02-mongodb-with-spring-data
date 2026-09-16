@@ -12,6 +12,31 @@ spring:
       # Indexes are declared explicitly in configuration, not derived from @Indexed at startup.
       auto-index-creation: false
 
+lab:
+  security:
+    # The iss claim, and what the decoder insists on seeing.
+    issuer: mongodb-lab
+    access-token-ttl: 15m
+    refresh-token-ttl: 14d
+
+    # Empty means no cross-origin call is allowed at all - add an origin only when something
+    # in a browser actually needs one. Never "*".
+    allowed-origins: []
+
+    jwt:
+      # Base64 PKCS#8 RSA private key. Left empty, a keypair is generated at every startup, so a
+      # devtools restart invalidates the token in http/requests.http mid-session. Set
+      # LAB_JWT_PRIVATE_KEY to keep one across restarts; see .env.example for how to make one.
+      private-key: ${LAB_JWT_PRIVATE_KEY:}
+
+    seed:
+      # On, because the sample users' passwords are BCrypt hashes of plaintext nobody has - with
+      # this off there is no way to log in at all. It only ever upserts the three lab accounts
+      # and never touches the sample rows. The property defaults to false in code, so an
+      # environment that does not ship this file seeds nothing.
+      enabled: true
+      password: ${LAB_SEED_PASSWORD:lab-password}
+
 logging:
   level:
     org.springframework.data.mongodb.core.MongoTemplate: INFO

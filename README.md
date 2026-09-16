@@ -91,6 +91,7 @@ ready to run in the IntelliJ HTTP client.
 | 6 transactions | [06](docs/notes/06-transactions.md) | rollback verified; 20 concurrent transfers keep the total invariant |
 | 7 change streams | [07](docs/notes/07-change-streams.md) | a rolled-back transaction emits no events at all |
 | 8 Atlas Search | [08](docs/notes/08-atlas-search.md) | fuzzy edit distance is measured against the *stemmed* term |
+| 10 Spring Security | [09](docs/notes/09-security.md) | ownership as a `Criteria` is 1 round trip and has no TOCTOU window; as a check it is 3 and leaks |
 
 ### Endpoints
 
@@ -173,6 +174,17 @@ ready to run in the IntelliJ HTTP client.
 | GET | `/api/search/fuzzy` | 8.7 |
 | GET/POST | `/api/search/index` | status / rebuild |
 
+**Phase 10 - security**
+
+| Method | Path | |
+|---|---|---|
+| POST | `/api/auth/register` `/login` | 10.2 token pair; 409 comes from the unique index |
+| POST | `/api/auth/refresh` `/logout` | 10.5 rotation, reuse detection, revocation |
+| GET | `/api/auth/me` | 10.2 what the server thinks you are |
+| GET | `/api/comments/mine` | 10.4 filtered by Mongo via `?#{authentication.name}` |
+| GET | `/api/comments/mine/post-filtered` | 10.4 the same, filtered too late |
+| DELETE | `/api/movies/{id}/comments/{commentId}` | 10.4 `?strategy=query\|post-authorize\|bean` |
+
 Filters shared by `/api/movies*` and `/api/stats/browse`: `title`, `genres` (repeatable),
 `yearFrom`, `yearTo`, `minRating`, `castMember`, plus `page`/`size`/`sort`.
 
@@ -182,12 +194,68 @@ curl 'http://localhost:8080/api/movies/paging-benchmark?yearFrom=1900&size=20&de
 curl 'http://localhost:8080/api/search/movies?q=gangster&limit=5'
 ```
 
+## Security
+
+The catalogue is public; everything that writes, explains or administers is not. The full rule
+set is one `SecurityFilterChain` in `vn.infodation.mongodb.security.SecurityConfig`, ending in
+`denyAll()` so a route added later is refused until somebody decides otherwise.
+
+| Who | Can reach |
+|---|---|
+| anyone | `GET /api/movies/**`, `/api/stats/**`, `/api/search/**` (except the index), and `POST /api/auth/login\|register\|refresh` |
+| any account | `POST` a comment, delete their own, `/api/comments/**`, `/api/auth/me` |
+| `ANALYST` | the above, plus `GET /api/analytics/balances` and `/transfers` |
+| `ADMIN` | everything: `/api/indexes/**`, `/api/cdc/**`, the `/api/analytics` writes, `/api/search/index`, and the explain and benchmark endpoints |
+
+Anonymous calls to a protected route get 401, a signed-in account with the wrong role gets 403,
+and both carry the same JSON error body as the rest of the API.
+
+Identity lives in `sample_mflix.users` - real documents with real BCrypt hashes. Their
+plaintexts are unknown, so three accounts with known passwords are upserted at startup:
+
+| Email | Role |
+|---|---|
+| `admin@lab.local` | `ADMIN` |
+| `analyst@lab.local` | `ANALYST` |
+| `user@lab.local` | `USER` |
+
+All three use `LAB_SEED_PASSWORD` (default `lab-password`). The seeder only ever upserts those
+three by email and never touches the sample rows; turn it off with
+`lab.security.seed.enabled=false`.
+
+Getting a token:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@lab.local","password":"lab-password"}' | jq -r .accessToken)
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/indexes/movies
+```
+
+`http/requests.http` does the same thing in its first block and stashes `{{adminToken}}`,
+`{{userToken}}` and `{{analystToken}}` for the rest of the file.
+
+Access tokens are RS256, self-issued, and last 15 minutes. Without `LAB_JWT_PRIVATE_KEY` the
+keypair is regenerated on every startup, so a devtools restart invalidates whatever token you
+were using - set it (see `.env.example`) for a session where that matters. Refresh tokens are
+opaque rows in `lab_refresh_tokens` under a TTL index, rotated on every use, and replaying a
+rotated one revokes the whole chain.
+
+The findings, including the three ways to check ownership and why only one of them is worth
+using, are in [docs/notes/09-security.md](docs/notes/09-security.md); the plan is
+[docs/plans/IMPLEMENT-SPRING-SECURITY.md](docs/plans/IMPLEMENT-SPRING-SECURITY.md).
+
 ## Tests
 
 ```bash
-./mvnw test      # 9 unit tests - no Docker needed
-./mvnw verify    # + 62 integration tests against a Testcontainers deployment
+./mvnw test      # 46 unit and slice tests - no Docker needed
+./mvnw verify    # + the integration tests, against a Testcontainers deployment
 ```
+
+`SecurityMatrixTest` runs the whole authorization matrix - every row of the table above, for
+anonymous, `USER`, `ANALYST` and `ADMIN` - as a `@WebMvcTest` with no database, so the rules
+are checked on every `./mvnw test`.
 
 The integration tests start their own `mongodb/mongodb-atlas-local` container and seed small
 fixtures, so they neither need nor touch the compose lab. The Atlas Search tests are the slow
@@ -195,10 +263,12 @@ ones: mongot has to build the index before anything can be queried.
 
 ## Startup behaviour
 
-Two `ApplicationRunner`s run against whatever the app connects to:
+Three `ApplicationRunner`s run against whatever the app connects to:
 
 - `LabStartupCheck` warns when a collection is empty, which is what catches a misconfigured
   connection - the failure is otherwise completely silent.
 - `IndexConfig` creates every index the lab uses, idempotently.
+- `LabUserSeeder` upserts the three lab accounts above.
 
-Disable either with `lab.startup-check.enabled=false` / `lab.index-creation.enabled=false`.
+Disable them with `lab.startup-check.enabled=false`, `lab.index-creation.enabled=false` and
+`lab.security.seed.enabled=false`.
