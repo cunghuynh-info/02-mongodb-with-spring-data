@@ -34,3 +34,8 @@ build/
 
 # local compose overrides
 .env
+
+# Tài liệu demo / thuyết trình cá nhân - không đẩy lên remote
+docs/details/
+docs/plans/DEMO-SCRIPT.md
+docs/plans/DEMO-SCRIPT.vi.md

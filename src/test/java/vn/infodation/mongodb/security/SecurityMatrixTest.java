@@ -135,6 +135,11 @@ class SecurityMatrixTest {
                 route(HttpMethod.GET, "/api/search/index", UNAUTHORIZED, FORBIDDEN, FORBIDDEN, ALLOWED),
                 route(HttpMethod.POST, "/api/search/index", UNAUTHORIZED, FORBIDDEN, FORBIDDEN, ALLOWED),
 
+                // The API docs are public - the Authorize button is how you get a token, so it
+                // cannot itself need one. They describe the API without widening it.
+                route(HttpMethod.GET, "/v3/api-docs", ALLOWED, ALLOWED, ALLOWED, ALLOWED),
+                route(HttpMethod.GET, "/v3/api-docs/swagger-config", ALLOWED, ALLOWED, ALLOWED, ALLOWED),
+
                 // Default deny: a path nobody mapped is refused before anyone discovers it is 404.
                 route(HttpMethod.GET, "/api/not-a-real-endpoint", UNAUTHORIZED, FORBIDDEN, FORBIDDEN, FORBIDDEN));
     }

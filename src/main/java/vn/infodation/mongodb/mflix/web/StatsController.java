@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import vn.infodation.mongodb.mflix.dto.GenreStats;
 import vn.infodation.mongodb.mflix.dto.MostCommentedMovie;
@@ -17,6 +18,9 @@ import vn.infodation.mongodb.supplies.dto.StoreRevenue;
 import vn.infodation.mongodb.supplies.service.SalesAggregationService;
 
 /** Phase 2.5 - 2.8. */
+@Tag(name = "2 - Aggregation",
+        description = "$unwind, $group, $facet and $bucket, plus a $lookup with a sub-pipeline. "
+                + "/stats/browse returns counts, buckets and a page in one round trip.")
 @RestController
 @RequestMapping("/api/stats")
 @RequiredArgsConstructor

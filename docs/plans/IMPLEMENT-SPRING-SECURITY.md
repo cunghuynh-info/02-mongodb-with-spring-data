@@ -24,7 +24,7 @@ config class.
 > each of which says why. Findings and measurements are in
 > [docs/notes/09-security.md](../notes/09-security.md).
 >
-> `./mvnw test` is green: 46 tests, no Docker, including the whole route matrix.
+> `./mvnw test` is green: 48 tests, no Docker, including the whole route matrix (Swagger added two rows).
 > **`./mvnw verify` has not been run** - Docker Desktop was not available on the machine this was
 > built on, so `AuthenticationFlowIT`, `RefreshTokenIT`, `CommentOwnershipIT` and `MyCommentsIT`
 > are written but unexecuted. Run it before trusting them.

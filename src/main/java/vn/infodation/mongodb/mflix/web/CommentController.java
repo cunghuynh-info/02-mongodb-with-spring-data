@@ -3,6 +3,7 @@ package vn.infodation.mongodb.mflix.web;
 import java.util.List;
 
 import org.bson.types.ObjectId;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -32,6 +34,7 @@ import vn.infodation.mongodb.mflix.service.CommentService;
  * Phase 1 - the four read paths sit side by side on purpose. Hit each with the same movie id
  * and compare the response and the query log.
  */
+@Tag(name = "1 - Comments", description = "The same comment list reached four ways - compare the round trips. Writing needs a token.")
 @RestController
 @RequestMapping("/api/movies/{id}/comments")
 @RequiredArgsConstructor
@@ -44,7 +47,7 @@ public class CommentController {
     @GetMapping
     public PageResponse<CommentView> list(
             @PathVariable String id,
-            @PageableDefault(size = 20) Pageable pageable) {
+            @ParameterObject @PageableDefault(size = 20) Pageable pageable) {
         return commentService.commentsFor(ObjectIds.parse(id), pageable);
     }
 

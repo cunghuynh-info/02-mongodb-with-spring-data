@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ import vn.infodation.mongodb.security.web.dto.AuthDtos.RegisterRequest;
 import vn.infodation.mongodb.security.web.dto.AuthDtos.TokenResponse;
 
 /** Phase 2 and Phase 5 - everything that hands out or takes back a token. */
+@Tag(name = "0 - Auth", description = "Log in, register, refresh, log out. Start here: everything else needs the token this hands out.")
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor

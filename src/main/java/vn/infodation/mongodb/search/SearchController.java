@@ -11,9 +11,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 
 /** Phase 8 - Atlas Search, served by mongot in the atlas-local image. */
+@Tag(name = "8 - Atlas Search", description = "Text, autocomplete, compound, facets and fuzzy. Index management is admin only.")
 @RestController
 @RequestMapping("/api/search")
 @RequiredArgsConstructor

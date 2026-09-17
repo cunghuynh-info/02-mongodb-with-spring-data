@@ -68,6 +68,16 @@ public class SecurityConfig {
                                 "/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
                         .requestMatchers("/api/auth/**").authenticated()
 
+                        // --- the API docs ------------------------------------------------------
+                        // Public, because the whole point of them is to be reachable before you
+                        // have a token - the Authorize button is how you get one. They describe
+                        // the API, they do not widen it: every operation listed here is still
+                        // subject to the rules below. Set springdoc.api-docs.enabled=false to
+                        // remove them entirely.
+                        .requestMatchers(HttpMethod.GET,
+                                "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs",
+                                "/v3/api-docs/**").permitAll()
+
                         // --- admin reads that would otherwise be swallowed by the line below ---
                         // Rules are evaluated in declaration order and the first match wins, so
                         // these three have to come before GET /api/movies/**. Getting this wrong

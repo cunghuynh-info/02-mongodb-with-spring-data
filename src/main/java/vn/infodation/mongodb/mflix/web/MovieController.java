@@ -3,6 +3,7 @@ package vn.infodation.mongodb.mflix.web;
 import java.util.List;
 
 import org.bson.Document;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import vn.infodation.mongodb.common.ExplainSummary;
 import vn.infodation.mongodb.common.ObjectIds;
@@ -23,6 +25,9 @@ import vn.infodation.mongodb.mflix.dto.MovieSearchCriteria;
 import vn.infodation.mongodb.mflix.dto.MovieSummary;
 import vn.infodation.mongodb.mflix.service.MovieService;
 
+@Tag(name = "1-2 - Movies",
+        description = "Embedded reads, dynamic Criteria filters, projections, and atomic $inc / "
+                + "$addToSet / $pull updates. The explain endpoint is admin only.")
 @RestController
 @RequestMapping("/api/movies")
 @RequiredArgsConstructor
@@ -39,25 +44,25 @@ public class MovieController {
     /** Phase 2.2 + 4.1 (offset paging). */
     @GetMapping
     public PageResponse<MovieDetail> search(
-            MovieSearchCriteria filter,
-            @PageableDefault(size = 20, sort = "year", direction = Sort.Direction.DESC) Pageable pageable) {
+            @ParameterObject MovieSearchCriteria filter,
+            @ParameterObject @PageableDefault(size = 20, sort = "year", direction = Sort.Direction.DESC) Pageable pageable) {
         return movieService.search(filter, pageable);
     }
 
     /** Phase 2.3 */
     @GetMapping("/summaries")
     public List<MovieSummary> summaries(
-            MovieSearchCriteria filter,
-            @PageableDefault(size = 20, sort = "year", direction = Sort.Direction.DESC) Pageable pageable) {
+            @ParameterObject MovieSearchCriteria filter,
+            @ParameterObject @PageableDefault(size = 20, sort = "year", direction = Sort.Direction.DESC) Pageable pageable) {
         return movieService.summaries(filter, pageable);
     }
 
     /** Phase 2.9 - {@code ?raw=true} for the untrimmed explain output. */
     @GetMapping("/explain")
     public Object explain(
-            MovieSearchCriteria filter,
+            @ParameterObject MovieSearchCriteria filter,
             @RequestParam(defaultValue = "false") boolean raw,
-            @PageableDefault(size = 20, sort = "year", direction = Sort.Direction.DESC) Pageable pageable) {
+            @ParameterObject @PageableDefault(size = 20, sort = "year", direction = Sort.Direction.DESC) Pageable pageable) {
         if (raw) {
             Document document = movieService.explainRaw(filter, pageable);
             return document;

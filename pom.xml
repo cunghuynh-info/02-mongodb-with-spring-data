@@ -28,6 +28,7 @@
     </scm>
     <properties>
         <java.version>17</java.version>
+        <springdoc.version>3.1.1</springdoc.version>
     </properties>
     <dependencies>
         <dependency>
@@ -62,6 +63,16 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-data</artifactId>
+        </dependency>
+
+        <!-- Swagger UI at /swagger-ui.html, OpenAPI 3 at /v3/api-docs.
+             Version pinned explicitly: the Boot BOM does not manage springdoc. The 3.x line is
+             the one built against Boot 4 / Spring Framework 7 - springdoc 2.x targets Boot 3 and
+             will not start here. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
         </dependency>
 
         <dependency>

@@ -194,6 +194,33 @@ curl 'http://localhost:8080/api/movies/paging-benchmark?yearFrom=1900&size=20&de
 curl 'http://localhost:8080/api/search/movies?q=gangster&limit=5'
 ```
 
+## Swagger UI
+
+```
+http://localhost:8080/swagger-ui.html      the UI
+http://localhost:8080/v3/api-docs          the OpenAPI 3 document
+```
+
+All 57 operations, grouped by phase. Both URLs are public - the **Authorize** button is how you
+get a token, so it cannot itself require one. They describe the API without widening it: every
+operation listed is still subject to the rules below, and `SecurityMatrixTest` asserts that.
+
+To test a protected endpoint:
+
+1. Run `POST /api/auth/login` from the **0 - Auth** group with one of the seeded accounts below.
+2. Copy `accessToken` out of the response.
+3. Click **Authorize**, paste it, **Authorize**, **Close**. Swagger adds the `Bearer ` prefix.
+
+The token is sent on every request from then on, and `persist-authorization` keeps it across
+page reloads. It lasts 15 minutes; when it expires, *public* endpoints start failing too, because
+the resource server tries the stale token and rejects it. Re-authorize, or clear it, and they
+work again.
+
+Turn the whole thing off with `springdoc.api-docs.enabled=false`.
+
+> springdoc **3.x**, pinned in `pom.xml`. The 2.x line targets Boot 3 and will not start here,
+> and the Boot BOM does not manage springdoc at all, so the version is ours to keep current.
+
 ## Security
 
 The catalogue is public; everything that writes, explains or administers is not. The full rule
@@ -249,7 +276,7 @@ using, are in [docs/notes/09-security.md](docs/notes/09-security.md); the plan i
 ## Tests
 
 ```bash
-./mvnw test      # 46 unit and slice tests - no Docker needed
+./mvnw test      # 48 unit and slice tests - no Docker needed
 ./mvnw verify    # + the integration tests, against a Testcontainers deployment
 ```
 

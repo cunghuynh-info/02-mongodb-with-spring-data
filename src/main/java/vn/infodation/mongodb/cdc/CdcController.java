@@ -11,9 +11,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 
 /** Phase 7. Start the listener, write to accounts elsewhere, then read the events back. */
+@Tag(name = "7 - Change streams", description = "Start the listener, write something, read the events. Admin only.")
 @RestController
 @RequestMapping("/api/cdc")
 @RequiredArgsConstructor

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import vn.infodation.mongodb.analytics.domain.Transfer;
 import vn.infodation.mongodb.analytics.service.BulkWriteService;
@@ -18,6 +19,7 @@ import vn.infodation.mongodb.analytics.service.RetryingTransferService;
 import vn.infodation.mongodb.analytics.service.TransferService;
 
 /** Phases 5 and 6. */
+@Tag(name = "5-6 - Bulk and transactions", description = "Bulk write modes and money transfers. Reads need ANALYST, writes need ADMIN.")
 @RestController
 @RequestMapping("/api/analytics")
 @RequiredArgsConstructor

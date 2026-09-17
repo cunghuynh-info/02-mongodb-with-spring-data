@@ -10,12 +10,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import vn.infodation.mongodb.common.ExplainSummary;
 import vn.infodation.mongodb.config.IndexConfig;
 import vn.infodation.mongodb.mflix.service.IndexInspectionService;
 
 /** Phase 3 - look at what exists, and at what the planner does with it. */
+@Tag(name = "3 - Indexes", description = "What exists, covered queries, and the partial-index implication trap. Admin only.")
 @RestController
 @RequestMapping("/api/indexes")
 @RequiredArgsConstructor

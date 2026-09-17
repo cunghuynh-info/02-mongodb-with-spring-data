@@ -12,6 +12,31 @@ spring:
       # Indexes are declared explicitly in configuration, not derived from @Indexed at startup.
       auto-index-creation: false
 
+springdoc:
+  # Swagger UI chỉ hiện những endpoint nằm trong kịch bản demo
+  # (docs/details/DEMO-SWAGGER.vi.md). Các endpoint bị loại vẫn chạy bình thường -
+  # đây chỉ là bộ lọc cho tài liệu OpenAPI, không phải cấu hình routing.
+  # Muốn hiện lại đầy đủ: comment cả khối paths-to-exclude bên dưới.
+  paths-to-exclude:
+    # "4 - My comments" - phần ownership của Spring Security, không thuộc 7 nội dung demo
+    - /api/comments/**
+    # Chỉ giữ /auth/login và /auth/me; đăng ký và vòng đời refresh token là phần security riêng
+    - /api/auth/register
+    - /api/auth/refresh
+    - /api/auth/logout
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    # Endpoints are grouped by @Tag (phase); within a group, keep the declared order rather
+    # than sorting alphabetically - the phases tell a story and alpha order destroys it.
+    tags-sorter: alpha
+    # The whole repo is about measurements, so the UI may as well report them.
+    display-request-duration: true
+    # Collapsed by default: there are ~50 operations and an expanded list is unreadable.
+    doc-expansion: none
+    persist-authorization: true
+
 lab:
   security:
     # The iss claim, and what the decoder insists on seeing.
