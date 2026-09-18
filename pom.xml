@@ -183,6 +183,29 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- Adds src/it/java as a second test source root, compiled and put on the same
+                 test classpath as src/test/java. Surefire (unit, *Test.java) and Failsafe
+                 (integration, *IT.java) already tell the two apart by name; this only moves
+                 where the IT sources physically live. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>add-integration-test-source</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>src/it/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 
