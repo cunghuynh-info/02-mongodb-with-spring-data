@@ -1,9 +1,11 @@
 package vn.infodation.mongodb.analytics.service;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +15,8 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 
 import vn.infodation.mongodb.analytics.domain.Account;
+import vn.infodation.mongodb.common.async.AsyncJobRegistry;
+import vn.infodation.mongodb.common.async.AsyncJobStatus;
 import vn.infodation.mongodb.support.AbstractMongoIntegrationTest;
 import vn.infodation.mongodb.support.AnalyticsFixtures;
 import vn.infodation.mongodb.support.SampleFixtures;
@@ -24,6 +28,9 @@ class BulkWriteServiceIT extends AbstractMongoIntegrationTest {
 
     @Autowired
     BulkWriteService bulkWriteService;
+
+    @Autowired
+    AsyncJobRegistry jobRegistry;
 
     @Autowired
     @Qualifier("analyticsTemplate")
@@ -110,6 +117,38 @@ class BulkWriteServiceIT extends AbstractMongoIntegrationTest {
 
         assertThat(result.get("commentsRead")).isEqualTo(result.get("documentsWritten"));
         assertThat(((Number) result.get("commentsRead")).longValue()).isPositive();
+    }
+
+    /** Phase 9.4 - the async wrapper produces the same result, just delivered via the job registry. */
+    @Test
+    void benchmarkJobCompletesAsynchronouslyAndRecordsItsResult() {
+        String jobId = jobRegistry.start();
+        bulkWriteService.runBenchmarkAsync(jobId, 500, 100);
+
+        Awaitility.await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(jobRegistry.require(jobId).state())
+                        .isEqualTo(AsyncJobStatus.State.DONE));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) jobRegistry.require(jobId).result();
+        assertThat(result).containsEntry("documentsWritten", 500L);
+    }
+
+    /** Phase 9.4 - a failure inside the job lands in the registry, not as an exception nobody catches. */
+    @Test
+    void aFailingJobIsRecordedAsFailedNotSilentlyDropped() {
+        String jobId = jobRegistry.start();
+        // A negative batchSize makes `new ArrayList<>(batchSize)` throw IllegalArgumentException
+        // as soon as benchmark() starts its bulk phase - a convenient, deterministic way to
+        // exercise the catch block without depending on anything Mongo-specific.
+        bulkWriteService.runBenchmarkAsync(jobId, 10, -1);
+
+        Awaitility.await().atMost(Duration.ofSeconds(10))
+                .untilAsserted(() -> assertThat(jobRegistry.require(jobId).state())
+                        .isNotEqualTo(AsyncJobStatus.State.RUNNING));
+
+        assertThat(jobRegistry.require(jobId).state()).isEqualTo(AsyncJobStatus.State.FAILED);
+        assertThat(jobRegistry.require(jobId).errorMessage()).isNotBlank();
     }
 
     private Account account(int accountId) {

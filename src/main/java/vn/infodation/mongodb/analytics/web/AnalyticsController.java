@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +19,8 @@ import vn.infodation.mongodb.analytics.domain.Transfer;
 import vn.infodation.mongodb.analytics.service.BulkWriteService;
 import vn.infodation.mongodb.analytics.service.RetryingTransferService;
 import vn.infodation.mongodb.analytics.service.TransferService;
+import vn.infodation.mongodb.common.async.AsyncJobRegistry;
+import vn.infodation.mongodb.common.async.AsyncJobStatus;
 
 /** Phases 5 and 6. */
 @Tag(name = "5-6 - Bulk and transactions", description = "Bulk write modes and money transfers. Reads need ANALYST, writes need ADMIN.")
@@ -28,6 +32,7 @@ public class AnalyticsController {
     private final BulkWriteService bulkWriteService;
     private final TransferService transferService;
     private final RetryingTransferService retryingTransferService;
+    private final AsyncJobRegistry jobRegistry;
 
     // ---- Phase 5 -----------------------------------------------------------------------
 
@@ -90,5 +95,32 @@ public class AnalyticsController {
     }
 
     public record TransferRequest(int from, int to, BigDecimal amount, String idempotencyKey) {
+    }
+
+    // ---- Phase 9 -------------------------------------------------------------------------
+
+    /**
+     * Phase 9.4 - the same benchmark as {@link #benchmark}, started in the background. Returns
+     * as soon as the job is registered; poll {@link #job} with the returned id for the result.
+     */
+    @PostMapping("/bulk/benchmark/async")
+    public ResponseEntity<Map<String, Object>> benchmarkAsync(@RequestParam(defaultValue = "5000") int total,
+                                                               @RequestParam(defaultValue = "1000") int batchSize) {
+        String jobId = jobRegistry.start();
+        bulkWriteService.runBenchmarkAsync(jobId, total, batchSize);
+        return ResponseEntity.accepted().body(Map.of("jobId", jobId));
+    }
+
+    /** Phase 9.4 - {@link #streamToBulk}, started in the background the same way. */
+    @PostMapping("/bulk/stream-to-bulk/async")
+    public ResponseEntity<Map<String, Object>> streamToBulkAsync(@RequestParam(defaultValue = "1000") int batchSize) {
+        String jobId = jobRegistry.start();
+        bulkWriteService.runDenormaliseCommentAuthorsAsync(jobId, batchSize);
+        return ResponseEntity.accepted().body(Map.of("jobId", jobId));
+    }
+
+    @GetMapping("/jobs/{jobId}")
+    public AsyncJobStatus job(@PathVariable String jobId) {
+        return jobRegistry.require(jobId);
     }
 }

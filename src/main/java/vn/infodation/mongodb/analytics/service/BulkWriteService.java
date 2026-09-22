@@ -17,12 +17,15 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.mongodb.bulk.BulkWriteResult;
 
 import lombok.extern.slf4j.Slf4j;
 import vn.infodation.mongodb.analytics.domain.Account;
+import vn.infodation.mongodb.common.async.AsyncJobRegistry;
+import vn.infodation.mongodb.config.AsyncConfig;
 import vn.infodation.mongodb.config.IndexConfig;
 
 /**
@@ -41,11 +44,13 @@ public class BulkWriteService {
 
     private final MongoTemplate analytics;
     private final MongoTemplate mflix;
+    private final AsyncJobRegistry jobRegistry;
 
     public BulkWriteService(@Qualifier("analyticsTemplate") MongoTemplate analytics,
-                            MongoTemplate mflix) {
+                            MongoTemplate mflix, AsyncJobRegistry jobRegistry) {
         this.analytics = analytics;
         this.mflix = mflix;
+        this.jobRegistry = jobRegistry;
     }
 
     /** Phase 5.1 - the mixed batch, and what {@link BulkWriteResult} actually tells you. */
@@ -198,6 +203,38 @@ public class BulkWriteService {
         BulkWriteResult result = mflix.bulkOps(BulkMode.UNORDERED, collection).insert(batch).execute();
         batch.clear();
         return result.getInsertedCount();
+    }
+
+    /**
+     * Phase 9.4 - {@link #benchmark} run as a fire-and-forget job instead of on the request
+     * thread. A {@code void}-returning {@code @Async} method has no return channel of its own,
+     * so the result - or the failure - is recorded against {@code jobId} in
+     * {@link AsyncJobRegistry}; {@link AsyncConfig}'s uncaught-exception handler is only the
+     * backstop for whatever this {@code catch} misses.
+     */
+    @Async(AsyncConfig.TASK_EXECUTOR)
+    public void runBenchmarkAsync(String jobId, int total, int batchSize) {
+        try {
+            jobRegistry.complete(jobId, benchmark(total, batchSize));
+        } catch (RuntimeException ex) {
+            log.error("benchmark job {} failed", jobId, ex);
+            jobRegistry.fail(jobId, ex.getMessage());
+        }
+    }
+
+    /**
+     * Phase 9.4 - {@link #denormaliseCommentAuthors} the same way. The better of the two
+     * examples: it is already a streamed scan rather than a fixed batch (see its own javadoc),
+     * so a large {@code comments} collection no longer holds a request thread for the whole scan.
+     */
+    @Async(AsyncConfig.TASK_EXECUTOR)
+    public void runDenormaliseCommentAuthorsAsync(String jobId, int batchSize) {
+        try {
+            jobRegistry.complete(jobId, denormaliseCommentAuthors(batchSize));
+        } catch (RuntimeException ex) {
+            log.error("stream-to-bulk job {} failed", jobId, ex);
+            jobRegistry.fail(jobId, ex.getMessage());
+        }
     }
 
     private static Map<String, Object> summarise(BulkWriteResult result) {
