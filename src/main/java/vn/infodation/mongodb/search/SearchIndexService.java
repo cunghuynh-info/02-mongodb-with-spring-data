@@ -3,15 +3,18 @@ package vn.infodation.mongodb.search;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import org.bson.Document;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.mongodb.client.MongoCollection;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import vn.infodation.mongodb.config.AsyncConfig;
 
 /**
  * Phase 8 - the {@code movies_search} index, in Java.
@@ -92,23 +95,51 @@ public class SearchIndexService {
         return null;
     }
 
-    /** Blocks until the index is queryable, or gives up. Returns whether it made it. */
-    public boolean awaitQueryable(String name, Duration timeout) {
+    /**
+     * Phase 9.2 - waits until the index is queryable, or gives up, without blocking the caller.
+     * <p>
+     * The poll loop itself has not changed since Phase 8 - it still sleeps a second at a time
+     * against a real deadline. What changed is who does the waiting: {@code @Async} moves this
+     * whole method onto {@link AsyncConfig#TASK_EXECUTOR}, so a caller gets a
+     * {@link CompletableFuture} back immediately instead of a boolean after however long the
+     * build takes. {@link SearchController#rebuildIndex} is the intended caller - a different
+     * bean, so the {@code @Async} proxy is actually in the call path (see
+     * {@link #awaitQueryableViaSelfInvocation} for what happens when it is not).
+     */
+    @Async(AsyncConfig.TASK_EXECUTOR)
+    public CompletableFuture<Boolean> awaitQueryable(String name, Duration timeout) {
         Instant deadline = Instant.now().plus(timeout);
         while (Instant.now().isBefore(deadline)) {
             Document info = info(name);
             if (info != null && (Boolean.TRUE.equals(info.getBoolean("queryable"))
                     || "READY".equals(info.getString("status")))) {
-                return true;
+                return CompletableFuture.completedFuture(true);
             }
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
-                return false;
+                return CompletableFuture.completedFuture(false);
             }
         }
-        return false;
+        return CompletableFuture.completedFuture(false);
+    }
+
+    /**
+     * Phase 9.3 - the self-invocation pitfall, kept on purpose so it can be run and observed
+     * rather than taken on faith.
+     * <p>
+     * {@code @Async} only takes effect through the Spring AOP proxy wrapped around this bean.
+     * {@link #ensureMoviesIndex()} calling {@code awaitQueryable(...)} directly on {@code this}
+     * would be exactly this mistake: a call from one method to another on the <em>same</em>
+     * instance never goes through the proxy, so the real method runs on the calling thread with
+     * no error and no warning - it still returns a {@code CompletableFuture<Boolean>}, only it
+     * is already completed by the time the caller gets it back, because the entire poll loop ran
+     * first. {@link SearchController#rebuildIndex} shows the fix: call {@link #awaitQueryable}
+     * from a different bean, and the proxy is actually in the call path.
+     */
+    public CompletableFuture<Boolean> awaitQueryableViaSelfInvocation(String name, Duration timeout) {
+        return awaitQueryable(name, timeout); // self-invocation - the @Async above is a no-op here
     }
 
     public void drop(String name) {

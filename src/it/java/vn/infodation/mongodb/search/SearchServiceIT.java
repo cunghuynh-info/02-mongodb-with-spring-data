@@ -49,7 +49,10 @@ class SearchServiceIT extends AbstractMongoIntegrationTest {
         }
         SampleFixtures.reset(mongoTemplate);
         indexService.ensureMoviesIndex();
-        assertThat(indexService.awaitQueryable(SearchIndexService.MOVIES_INDEX, INDEX_TIMEOUT))
+        // Phase 9.2 - awaitQueryable is now @Async and returns a CompletableFuture<Boolean>;
+        // join() here is the test choosing to block, the same choice SearchController makes by
+        // returning the future straight out of the endpoint instead.
+        assertThat(indexService.awaitQueryable(SearchIndexService.MOVIES_INDEX, INDEX_TIMEOUT).join())
                 .as("search index did not become queryable")
                 .isTrue();
 

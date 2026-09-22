@@ -3,6 +3,7 @@ package vn.infodation.mongodb.search;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import org.bson.Document;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -79,11 +80,19 @@ public class SearchController {
                 "queryable", String.valueOf(info.getBoolean("queryable")));
     }
 
-    /** Recreate the index from {@link SearchIndexService#moviesIndexDefinition()} and wait. */
+    /**
+     * Recreate the index from {@link SearchIndexService#moviesIndexDefinition()} and wait.
+     * <p>
+     * Phase 9.2 - {@code ensureMoviesIndex()} is a quick admin command and stays synchronous;
+     * {@code awaitQueryable(...)} is the slow part, and returning its
+     * {@link CompletableFuture} straight out of the controller method lets Spring MVC dispatch
+     * the response once the background poll finishes, instead of a request thread blocking on
+     * {@code Thread.sleep} for however long the index build takes.
+     */
     @PostMapping("/index")
-    public Map<String, Object> rebuildIndex() {
+    public CompletableFuture<Map<String, Object>> rebuildIndex() {
         indexService.ensureMoviesIndex();
-        boolean queryable = indexService.awaitQueryable(SearchIndexService.MOVIES_INDEX, Duration.ofMinutes(3));
-        return Map.of("queryable", queryable);
+        return indexService.awaitQueryable(SearchIndexService.MOVIES_INDEX, Duration.ofMinutes(3))
+                .thenApply(queryable -> Map.of("queryable", queryable));
     }
 }
