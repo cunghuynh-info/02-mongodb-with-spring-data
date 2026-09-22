@@ -1,7 +1,9 @@
 package vn.infodation.mongodb.cdc;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import org.bson.Document;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -28,6 +30,20 @@ public class CdcController {
     public Map<String, Object> start(@RequestParam(defaultValue = "true") boolean resume) {
         listener.start(resume);
         return status();
+    }
+
+    /**
+     * Phase 9.5 - {@link #start}, but waits for the subscription to actually be open before
+     * responding, without tying up this request thread for the wait: the returned
+     * {@link CompletableFuture} is what {@link AccountChangeListener#startAndAwaitAsync}
+     * produces, and Spring MVC completes the response once it does.
+     */
+    @PostMapping("/start-and-await")
+    public CompletableFuture<Map<String, Object>> startAndAwait(
+            @RequestParam(defaultValue = "true") boolean resume,
+            @RequestParam(defaultValue = "30") long timeoutSeconds) {
+        return listener.startAndAwaitAsync(resume, Duration.ofSeconds(timeoutSeconds))
+                .thenApply(subscription -> status());
     }
 
     @PostMapping("/stop")

@@ -1,7 +1,9 @@
 package vn.infodation.mongodb.cdc;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -16,6 +18,7 @@ import org.springframework.data.mongodb.core.messaging.MessageListenerContainer;
 import org.springframework.data.mongodb.core.messaging.Subscription;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
@@ -24,6 +27,7 @@ import com.mongodb.client.model.changestream.FullDocumentBeforeChange;
 import com.mongodb.client.model.changestream.OperationType;
 
 import lombok.extern.slf4j.Slf4j;
+import vn.infodation.mongodb.config.AsyncConfig;
 
 /**
  * Phase 7.1 / 7.3 / 7.4 / 7.5 / 7.7 - one change stream, doing the things a real one has to do.
@@ -100,7 +104,7 @@ public class AccountChangeListener {
      * Anything written in that gap is never seen, which makes for a wonderfully intermittent
      * test - so wait for the subscription to become active.
      */
-    public Subscription startAndAwait(boolean resume, java.time.Duration timeout) {
+    public Subscription startAndAwait(boolean resume, Duration timeout) {
         Subscription started = start(resume);
         try {
             started.await(timeout);
@@ -109,6 +113,24 @@ public class AccountChangeListener {
             throw new IllegalStateException("interrupted while waiting for the change stream", ex);
         }
         return started;
+    }
+
+    /**
+     * Phase 9.5 - {@link #startAndAwait} without blocking the caller.
+     * <p>
+     * {@link #startAndAwait} exists because registering a subscription returns before the
+     * server cursor is actually open, so something has to wait on {@link Subscription#await}
+     * before the listener can be treated as running. A caller that only needs that guarantee -
+     * not the result on this call - gets a {@link CompletableFuture} back immediately instead of
+     * blocking its own thread for however long the subscription takes to open. This calls the
+     * plain {@link #startAndAwait} on {@code this}, which is fine here: unlike
+     * {@code SearchIndexService.awaitQueryableViaSelfInvocation}, {@code startAndAwait} itself
+     * carries no {@code @Async} of its own for a self-invocation to bypass - the whole point is
+     * to run its blocking body on the executor thread this method was dispatched to.
+     */
+    @Async(AsyncConfig.TASK_EXECUTOR)
+    public CompletableFuture<Subscription> startAndAwaitAsync(boolean resume, Duration timeout) {
+        return CompletableFuture.completedFuture(startAndAwait(resume, timeout));
     }
 
     public synchronized void stop() {
