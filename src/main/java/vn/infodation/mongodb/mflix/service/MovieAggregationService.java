@@ -1,6 +1,7 @@
 package vn.infodation.mongodb.mflix.service;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import org.bson.Document;
 import org.springframework.data.domain.Sort;
@@ -8,10 +9,12 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.aggregation.AggregationOptions;
 import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
 import vn.infodation.mongodb.common.RawStage;
+import vn.infodation.mongodb.config.AsyncConfig;
 import vn.infodation.mongodb.mflix.dto.GenreStats;
 import vn.infodation.mongodb.mflix.dto.MostCommentedMovie;
 import vn.infodation.mongodb.mflix.dto.MovieSearchCriteria;
@@ -57,6 +60,16 @@ public class MovieAggregationService {
                 .withOptions(OPTIONS);
 
         return mongoTemplate.aggregate(aggregation, MOVIES, GenreStats.class).getMappedResults();
+    }
+
+    /**
+     * Phase 9.6 - {@link #genreStats} run in the background, so {@link DashboardService} can
+     * fire it off alongside an unrelated aggregation against a different database instead of
+     * running the two one after another.
+     */
+    @Async(AsyncConfig.TASK_EXECUTOR)
+    public CompletableFuture<List<GenreStats>> genreStatsAsync(int limit) {
+        return CompletableFuture.completedFuture(genreStats(limit));
     }
 
     /**

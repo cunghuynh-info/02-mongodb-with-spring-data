@@ -10,9 +10,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import vn.infodation.mongodb.mflix.dto.DashboardStats;
 import vn.infodation.mongodb.mflix.dto.GenreStats;
 import vn.infodation.mongodb.mflix.dto.MostCommentedMovie;
 import vn.infodation.mongodb.mflix.dto.MovieSearchCriteria;
+import vn.infodation.mongodb.mflix.service.DashboardService;
 import vn.infodation.mongodb.mflix.service.MovieAggregationService;
 import vn.infodation.mongodb.supplies.dto.StoreRevenue;
 import vn.infodation.mongodb.supplies.service.SalesAggregationService;
@@ -28,6 +30,7 @@ public class StatsController {
 
     private final MovieAggregationService movieAggregationService;
     private final SalesAggregationService salesAggregationService;
+    private final DashboardService dashboardService;
 
     @GetMapping("/genres")
     public List<GenreStats> genres(@RequestParam(defaultValue = "20") int limit) {
@@ -57,5 +60,15 @@ public class StatsController {
     @GetMapping("/sales-revenue-dense")
     public List<Document> salesRevenueDense(@RequestParam(defaultValue = "50") int limit) {
         return salesAggregationService.revenuePerStoreAndMonthDense(limit);
+    }
+
+    /**
+     * Phase 9.6 - {@link #genres} and {@link #salesRevenue} fetched concurrently against two
+     * different databases instead of one after the other; compare the two endpoints' combined
+     * latency against calling this one to see the difference {@code @Async} makes here.
+     */
+    @GetMapping("/dashboard")
+    public DashboardStats dashboard(@RequestParam(defaultValue = "20") int limit) {
+        return dashboardService.dashboard(limit);
     }
 }

@@ -1,6 +1,7 @@
 package vn.infodation.mongodb.supplies.service;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Sort;
@@ -9,11 +10,13 @@ import org.springframework.data.mongodb.core.aggregation.Aggregation;
 import org.springframework.data.mongodb.core.aggregation.AggregationOptions;
 import org.springframework.data.mongodb.core.aggregation.ArithmeticOperators;
 import org.springframework.data.mongodb.core.aggregation.DateOperators;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import org.bson.Document;
 
 import vn.infodation.mongodb.common.RawStage;
+import vn.infodation.mongodb.config.AsyncConfig;
 import vn.infodation.mongodb.supplies.dto.StoreRevenue;
 
 /**
@@ -59,6 +62,16 @@ public class SalesAggregationService {
                 .withOptions(AggregationOptions.builder().allowDiskUse(true).build());
 
         return suppliesTemplate.aggregate(aggregation, SALES, StoreRevenue.class).getMappedResults();
+    }
+
+    /**
+     * Phase 9.6 - {@link #revenuePerStoreAndMonth} run in the background, to combine with an
+     * unrelated aggregation against {@code sample_mflix} in {@link
+     * vn.infodation.mongodb.mflix.service.DashboardService} instead of running after it.
+     */
+    @Async(AsyncConfig.TASK_EXECUTOR)
+    public CompletableFuture<List<StoreRevenue>> revenuePerStoreAndMonthAsync(int limit) {
+        return CompletableFuture.completedFuture(revenuePerStoreAndMonth(limit));
     }
 
     /**
